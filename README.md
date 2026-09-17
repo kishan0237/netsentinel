@@ -2,6 +2,18 @@
 
 Agent-centric network scanner. **No user accounts, no logins, no passwords.**
 
+## Live deployment
+
+| Component | URL |
+|---|---|
+| Dashboard (Vercel) | https://netsentinel.vercel.app |
+| API (Render) | https://netsentinel-api-utjb.onrender.com |
+| API health | https://netsentinel-api-utjb.onrender.com/api/health |
+| Swagger docs | https://netsentinel-api-utjb.onrender.com/docs |
+
+Agent connects with `NETSENTINEL_API_URL=https://netsentinel-api-utjb.onrender.com`.
+Dashboard builds need `VITE_API_URL` set to the Render URL (Vercel env var).
+
 ```
 Vercel (dashboard)  ──HTTPS──▶  Render (FastAPI)  ──▶  Supabase (Postgres)
                                         ▲
