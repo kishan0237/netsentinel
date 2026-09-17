@@ -9,12 +9,14 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.backend.database.models import Agent, Finding, Host, Port, Report, Scan, Service, Vulnerability
 from app.backend.schemas import ScanCreate
 from app.backend.utils.input_validation import ValidationError, validate_ports_spec, validate_target
+from app.backend.utils.scan_authorization import coerce_uuid
 from app.backend.utils.secrets_management import redact_secrets
 
 logger = logging.getLogger(__name__)
@@ -39,7 +41,10 @@ def create_scan(db: Session, payload: ScanCreate) -> Scan:
     except ValidationError as e:
         raise ScanValidationError(str(e)) from e
 
-    agent = db.get(Agent, str(payload.agent_id))
+    try:
+        agent = db.get(Agent, coerce_uuid(payload.agent_id))
+    except ValueError:
+        agent = None
     if agent is None:
         raise ScanValidationError("Agent not found")
 
@@ -258,7 +263,10 @@ def _to_float(value: Any) -> Optional[float]:
 
 def get_scan_results(db: Session, scan_id: str) -> dict[str, Any]:
     """Full nested results tree for the Results page."""
-    scan = db.get(Scan, str(scan_id))
+    try:
+        scan = db.get(Scan, coerce_uuid(scan_id))
+    except ValueError:
+        scan = None
     if not scan:
         return {}
 

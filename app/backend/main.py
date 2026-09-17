@@ -7,9 +7,11 @@ installation token issued at registration.
 import logging
 import os
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from app.backend.database.database import get_db
 
 from app.backend.database.database import init_db
 from app.backend.routes import (
@@ -69,8 +71,21 @@ def root():
 
 
 @app.get("/api/health", tags=["meta"])
-def health():
-    return {"status": "ok"}
+def health(db=Depends(get_db)):
+    """Liveness + database connectivity check.
+
+    `database` is "ok" or a short error string, so deployment issues
+    (wrong password, unreachable host) are visible in one request.
+    """
+    from sqlalchemy import text
+
+    database = "ok"
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception as e:  # noqa: BLE001 — diagnostics must never 500
+        database = f"error: {str(e)[:300]}"
+        logger.error("Database health check failed: %s", e)
+    return {"status": "ok", "database": database}
 
 
 @app.exception_handler(Exception)

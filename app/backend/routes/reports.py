@@ -10,7 +10,7 @@ from app.backend.database.database import get_db
 from app.backend.database.models import Report
 from app.backend.schemas import ReportOut
 from app.backend.services import report_service, scan_service
-from app.backend.utils.scan_authorization import resolve_scan_or_404
+from app.backend.utils.scan_authorization import coerce_uuid, resolve_scan_or_404
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,10 @@ def list_reports(limit: int = 100, db: Session = Depends(get_db)):
 @router.get("/download/{report_id}")
 def download_report(report_id: str, db: Session = Depends(get_db)):
     """Regenerate the report content on the fly and stream it as a file."""
-    report = db.get(Report, report_id)
+    try:
+        report = db.get(Report, coerce_uuid(report_id))
+    except ValueError:
+        report = None
     if not report:
         raise HTTPException(404, "Report not found")
     scan = resolve_scan_or_404(db, report.scan_id)

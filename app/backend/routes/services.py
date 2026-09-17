@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.backend.database.database import get_db
 from app.backend.database.models import Service
 from app.backend.schemas import ServiceOut
+from app.backend.utils.scan_authorization import coerce_uuid
 
 router = APIRouter(prefix="/api/services", tags=["services"])
 
@@ -19,8 +20,11 @@ def list_services(
 ):
     from app.backend.database.models import Port
 
-    port = db.get(Port, port_id)
+    try:
+        port = db.get(Port, coerce_uuid(port_id))
+    except ValueError:
+        port = None
     if not port:
         raise HTTPException(404, "Port not found")
-    services = db.query(Service).filter(Service.port_id == port_id).all()
+    services = db.query(Service).filter(Service.port_id == port.id).all()
     return [ServiceOut.model_validate(s).model_dump(mode="json") for s in services]

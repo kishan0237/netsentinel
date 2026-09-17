@@ -152,5 +152,5 @@ def get_scan_report(
     return Response(
         content=content,
         media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="netsentinel-{scan.id[:8]}.{format}"'},
+        headers={"Content-Disposition": f'attachment; filename="netsentinel-{str(scan.id)[:8]}.{format}"'},
     )

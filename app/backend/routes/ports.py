@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.backend.database.database import get_db
 from app.backend.database.models import Port
 from app.backend.schemas import PortOut
-from app.backend.utils.scan_authorization import resolve_scan_or_404
+from app.backend.utils.scan_authorization import coerce_uuid, resolve_scan_or_404
 
 router = APIRouter(prefix="/api/ports", tags=["ports"])
 
@@ -21,12 +21,15 @@ def list_ports(
 ):
     from app.backend.database.models import Host
 
-    host = db.get(Host, host_id)
+    try:
+        host = db.get(Host, coerce_uuid(host_id))
+    except ValueError:
+        host = None
     if not host:
         raise HTTPException(404, "Host not found")
     ports = (
         db.query(Port)
-        .filter(Port.host_id == host_id)
+        .filter(Port.host_id == host.id)
         .order_by(Port.port_number)
         .limit(limit)
         .all()

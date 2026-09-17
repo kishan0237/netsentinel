@@ -19,8 +19,8 @@ def list_findings(
     severity: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    resolve_scan_or_404(db, scan_id)
-    query = db.query(Finding).filter(Finding.scan_id == scan_id)
+    scan = resolve_scan_or_404(db, scan_id)
+    query = db.query(Finding).filter(Finding.scan_id == scan.id)
     if severity:
         query = query.filter(Finding.severity == severity.lower())
     findings = query.order_by(Finding.created_at).all()

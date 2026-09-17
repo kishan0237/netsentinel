@@ -5,12 +5,20 @@ only claim/result its own scans. Scan creation from the web dashboard picks a
 random online agent; the agent picks up pending scans on its next poll.
 """
 
+import uuid
 from typing import Optional
 
 from fastapi import HTTPException, status
 
 from app.backend.database.models import Agent, Scan
 from app.backend.utils.secrets_management import verify_agent_token
+
+
+def coerce_uuid(value) -> uuid.UUID:
+    """Accept str | UUID and return a uuid.UUID (raises ValueError on garbage)."""
+    if isinstance(value, uuid.UUID):
+        return value
+    return uuid.UUID(str(value))
 
 
 def require_agent(scan: Scan, agent_uuid: str, token: Optional[str]) -> Agent:
@@ -30,7 +38,10 @@ def require_agent(scan: Scan, agent_uuid: str, token: Optional[str]) -> Agent:
 
 
 def resolve_scan_or_404(db, scan_id) -> Scan:
-    scan = db.get(Scan, str(scan_id))
+    try:
+        scan = db.get(Scan, coerce_uuid(scan_id))
+    except ValueError:
+        scan = None
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan

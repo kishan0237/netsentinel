@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.backend.database.database import get_db
 from app.backend.database.models import Vulnerability
 from app.backend.schemas import VulnerabilityOut
+from app.backend.utils.scan_authorization import coerce_uuid
 
 router = APIRouter(prefix="/api/vulnerabilities", tags=["vulnerabilities"])
 
@@ -19,12 +20,15 @@ def list_vulnerabilities(
 ):
     from app.backend.database.models import Service
 
-    service = db.get(Service, service_id)
+    try:
+        service = db.get(Service, coerce_uuid(service_id))
+    except ValueError:
+        service = None
     if not service:
         raise HTTPException(404, "Service not found")
     vulns = (
         db.query(Vulnerability)
-        .filter(Vulnerability.service_id == service_id)
+        .filter(Vulnerability.service_id == service.id)
         .order_by(Vulnerability.cvss_score.desc())
         .all()
     )

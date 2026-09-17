@@ -1,8 +1,14 @@
-"""SQLAlchemy models for the 8-table NetSentinel schema."""
+"""SQLAlchemy models for the 8-table NetSentinel schema.
 
+IDs use SQLAlchemy's native Uuid type so they match supabase/migrations/
+0001_init.sql exactly (native `uuid` columns on Postgres). This matters:
+binding Python strings into a Postgres uuid column via psycopg3 fails with
+"column is of type uuid but expression is of type text".
+"""
+
+import uuid as uuid_module
 from datetime import datetime, timezone
 from typing import Optional
-from uuid import uuid4
 
 from sqlalchemy import (
     CheckConstraint,
@@ -14,15 +20,18 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.backend.database.database import Base
 
+UuidPK = Uuid(as_uuid=True)
 
-def _uuid() -> str:
-    return str(uuid4())
+
+def _uuid() -> uuid_module.UUID:
+    return uuid_module.uuid4()
 
 
 def _utcnow() -> datetime:
@@ -38,7 +47,7 @@ class TimestampMixin:
 class Agent(Base, TimestampMixin):
     __tablename__ = "agents"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    id: Mapped[uuid_module.UUID] = mapped_column(UuidPK, primary_key=True, default=_uuid)
     agent_uuid: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     agent_name: Mapped[str] = mapped_column(String(255), nullable=False, default="NetSentinel Agent")
     hostname: Mapped[Optional[str]] = mapped_column(String(255))
@@ -56,8 +65,10 @@ class Agent(Base, TimestampMixin):
 class Scan(Base, TimestampMixin):
     __tablename__ = "scans"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    agent_id: Mapped[Optional[str]] = mapped_column(ForeignKey("agents.id"), index=True)
+    id: Mapped[uuid_module.UUID] = mapped_column(UuidPK, primary_key=True, default=_uuid)
+    agent_id: Mapped[Optional[uuid_module.UUID]] = mapped_column(
+        UuidPK, ForeignKey("agents.id"), index=True
+    )
     target: Mapped[str] = mapped_column(String(255), nullable=False)
     scan_type: Mapped[str] = mapped_column(String(16), nullable=False, default="standard")
     ports: Mapped[Optional[str]] = mapped_column(String(255))
@@ -82,8 +93,10 @@ class Scan(Base, TimestampMixin):
 class Host(Base, TimestampMixin):
     __tablename__ = "hosts"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    scan_id: Mapped[str] = mapped_column(ForeignKey("scans.id"), nullable=False, index=True)
+    id: Mapped[uuid_module.UUID] = mapped_column(UuidPK, primary_key=True, default=_uuid)
+    scan_id: Mapped[uuid_module.UUID] = mapped_column(
+        UuidPK, ForeignKey("scans.id"), nullable=False, index=True
+    )
     ip_address: Mapped[str] = mapped_column(String(45), nullable=False)
     mac_address: Mapped[Optional[str]] = mapped_column(String(32))
     hostname: Mapped[Optional[str]] = mapped_column(String(255))
@@ -99,8 +112,10 @@ class Host(Base, TimestampMixin):
 class Port(Base, TimestampMixin):
     __tablename__ = "ports"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    host_id: Mapped[str] = mapped_column(ForeignKey("hosts.id"), nullable=False, index=True)
+    id: Mapped[uuid_module.UUID] = mapped_column(UuidPK, primary_key=True, default=_uuid)
+    host_id: Mapped[uuid_module.UUID] = mapped_column(
+        UuidPK, ForeignKey("hosts.id"), nullable=False, index=True
+    )
     port_number: Mapped[int] = mapped_column(Integer, nullable=False)
     protocol: Mapped[str] = mapped_column(String(8), nullable=False, default="tcp")
     state: Mapped[str] = mapped_column(String(16), nullable=False, default="open", index=True)
@@ -117,8 +132,10 @@ class Port(Base, TimestampMixin):
 class Service(Base, TimestampMixin):
     __tablename__ = "services"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    port_id: Mapped[str] = mapped_column(ForeignKey("ports.id"), nullable=False, index=True)
+    id: Mapped[uuid_module.UUID] = mapped_column(UuidPK, primary_key=True, default=_uuid)
+    port_id: Mapped[uuid_module.UUID] = mapped_column(
+        UuidPK, ForeignKey("ports.id"), nullable=False, index=True
+    )
     service_name: Mapped[str] = mapped_column(String(64), nullable=False)
     product: Mapped[Optional[str]] = mapped_column(String(255))
     version: Mapped[Optional[str]] = mapped_column(String(64))
@@ -133,8 +150,10 @@ class Service(Base, TimestampMixin):
 class Vulnerability(Base, TimestampMixin):
     __tablename__ = "vulnerabilities"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    service_id: Mapped[str] = mapped_column(ForeignKey("services.id"), nullable=False, index=True)
+    id: Mapped[uuid_module.UUID] = mapped_column(UuidPK, primary_key=True, default=_uuid)
+    service_id: Mapped[uuid_module.UUID] = mapped_column(
+        UuidPK, ForeignKey("services.id"), nullable=False, index=True
+    )
     cve_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     cvss_score: Mapped[Optional[float]] = mapped_column(Numeric(3, 1))
@@ -150,10 +169,12 @@ class Vulnerability(Base, TimestampMixin):
 class Finding(Base, TimestampMixin):
     __tablename__ = "findings"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    scan_id: Mapped[str] = mapped_column(ForeignKey("scans.id"), nullable=False, index=True)
-    host_id: Mapped[Optional[str]] = mapped_column(ForeignKey("hosts.id"))
-    service_id: Mapped[Optional[str]] = mapped_column(ForeignKey("services.id"))
+    id: Mapped[uuid_module.UUID] = mapped_column(UuidPK, primary_key=True, default=_uuid)
+    scan_id: Mapped[uuid_module.UUID] = mapped_column(
+        UuidPK, ForeignKey("scans.id"), nullable=False, index=True
+    )
+    host_id: Mapped[Optional[uuid_module.UUID]] = mapped_column(UuidPK, ForeignKey("hosts.id"))
+    service_id: Mapped[Optional[uuid_module.UUID]] = mapped_column(UuidPK, ForeignKey("services.id"))
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
     severity: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
@@ -165,8 +186,10 @@ class Finding(Base, TimestampMixin):
 class Report(Base, TimestampMixin):
     __tablename__ = "reports"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    scan_id: Mapped[str] = mapped_column(ForeignKey("scans.id"), nullable=False, index=True)
+    id: Mapped[uuid_module.UUID] = mapped_column(UuidPK, primary_key=True, default=_uuid)
+    scan_id: Mapped[uuid_module.UUID] = mapped_column(
+        UuidPK, ForeignKey("scans.id"), nullable=False, index=True
+    )
     report_type: Mapped[str] = mapped_column(String(16), nullable=False)
     file_path: Mapped[Optional[str]] = mapped_column(Text)
 
