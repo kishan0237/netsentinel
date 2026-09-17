@@ -1,0 +1,25 @@
+# Render blueprint — deploys the FastAPI backend.
+# Deploy: Render dashboard -> New -> Blueprint -> point at this repo,
+# or `render blueprint launch`.
+services:
+  - type: web
+    name: netsentinel-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # paste your Supabase Postgres URI (use the pooler URI on port 6543)
+      - key: CORS_ORIGINS
+        sync: false          # e.g. https://netsentinel.vercel.app,http://localhost:5173
+      - key: ADMIN_API_KEY
+        generateValue: true  # auto-generated; used for DELETE /api/agents/{uuid}
+      - key: NVD_API_KEY
+        sync: false          # optional: enables live NVD CVE enrichment
+      - key: AUTO_CREATE_TABLES
+        value: "true"        # safe: create_all is idempotent; schema also in supabase/migrations
+      - key: LOG_LEVEL
+        value: info
