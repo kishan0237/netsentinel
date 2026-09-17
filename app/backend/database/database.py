@@ -9,7 +9,8 @@ from typing import Generator
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./netsentinel.db")
+# Treat empty-string env vars (e.g. Render env var left blank) as unset
+DATABASE_URL = os.getenv("DATABASE_URL") or "sqlite:///./netsentinel.db"
 AUTO_CREATE_TABLES = os.getenv("AUTO_CREATE_TABLES", "true").lower() != "false"
 
 IS_SQLITE = DATABASE_URL.startswith("sqlite")

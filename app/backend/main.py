@@ -28,11 +28,9 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
+DEFAULT_ORIGINS = "http://localhost:5173,http://localhost:4173,http://localhost:3000"
 ALLOWED_ORIGINS = [
-    o.strip() for o in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:5173,http://localhost:4173,http://localhost:3000",
-    ).split(",") if o.strip()
+    o.strip() for o in (os.getenv("CORS_ORIGINS") or DEFAULT_ORIGINS).split(",") if o.strip()
 ]
 
 app.add_middleware(
