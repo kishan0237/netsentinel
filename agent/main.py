@@ -11,8 +11,15 @@ import logging
 import signal
 import sys
 import time
+from pathlib import Path
 
-from agent.communication import api_client
+# Allow `python main.py` from any directory: put the project root on sys.path
+# so the `agent` package resolves.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from agent.communication import api_client  # noqa: E402
 from agent.communication.heartbeat import HeartbeatThread
 from agent.scanner.pipeline import ScanPipeline
 from agent.security.agent_identity import AgentIdentity
