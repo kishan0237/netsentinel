@@ -20,6 +20,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from agent.communication import api_client  # noqa: E402
+from agent.communication import offline_queue  # noqa: E402
 from agent.communication.heartbeat import HeartbeatThread
 from agent.scanner.pipeline import ScanPipeline
 from agent.security.agent_identity import AgentIdentity
@@ -107,6 +108,9 @@ class NetSentinelAgent:
                 time.sleep(POLL_INTERVAL)
                 return
 
+        # Retry any results that failed to submit earlier (offline queue)
+        self._flush_offline_queue()
+
         claimed = api_client.claim_scans(
             self.api_url, self.identity.agent_uuid, self.identity.token
         )
@@ -120,6 +124,18 @@ class NetSentinelAgent:
 
         for scan in claimed.get("data") or []:
             self._run_scan(scan)
+
+    def _flush_offline_queue(self) -> None:
+        for item in offline_queue.dequeue_all():
+            ok, _ = api_client.submit_results(
+                self.api_url, item["scan_id"], item["agent_uuid"], item["token"],
+                item["results"],
+            )
+            if ok:
+                offline_queue.ack(item["scan_id"])
+                logger.info("Flushed queued results for scan %s", item["scan_id"][:8])
+            else:
+                break  # server still unreachable; try again next poll
 
     def _run_scan(self, scan: dict) -> None:
         scan_id = scan["id"]
@@ -155,7 +171,11 @@ class NetSentinelAgent:
                 counts.get("findings", "?"),
             )
         else:
-            logger.error("Result submission failed: %s", data)
+            # Persist locally so the next poll retries the submission
+            offline_queue.enqueue(scan_id, self.identity.agent_uuid, self.identity.token, results)
+            logger.error(
+                "Result submission failed (%s) — queued locally, will retry every poll", data
+            )
 
     def stop(self, *_args) -> None:
         logger.info("Shutting down...")

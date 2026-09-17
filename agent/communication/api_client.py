@@ -28,21 +28,29 @@ def _headers(agent_uuid: str, token: str) -> dict:
 
 def _post(url: str, payload: dict, agent_uuid: str = "", token: str = "",
           retries: int = MAX_RETRIES) -> tuple[bool, Optional[dict | int]]:
-    """POST with retries on network errors. Returns (ok, data_or_status)."""
-    last_exc = None
+    """POST with retries on network errors AND server errors (5xx).
+
+    Client errors (4xx) are returned immediately — retrying cannot help.
+    Returns (ok, data_or_status).
+    """
+    last_exc: Exception | None = None
+    last_status: int | None = None
     for attempt in range(retries):
         try:
             r = requests.post(url, json=payload, headers=_headers(agent_uuid, token),
                               timeout=TIMEOUT)
             if r.status_code < 400:
                 return True, (r.json() if r.content else None)
-            return False, r.status_code
+            if r.status_code >= 500:
+                last_status = r.status_code  # server error: worth retrying
+            else:
+                return False, r.status_code
         except requests.RequestException as e:
             last_exc = e
-            if attempt < retries - 1:
-                import time
-                time.sleep(RETRY_BACKOFF ** attempt)
-    return False, str(last_exc)
+        if attempt < retries - 1:
+            import time
+            time.sleep(RETRY_BACKOFF ** attempt)
+    return False, last_status if last_status is not None else str(last_exc)
 
 
 def _get(url: str, agent_uuid: str = "", token: str = "") -> tuple[bool, Optional[dict | int]]:

@@ -7,7 +7,7 @@ streaming progress -> the agent pushes results -> scan becomes `completed`.
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID
 
@@ -61,6 +61,33 @@ def create_scan(db: Session, payload: ScanCreate) -> Scan:
     db.refresh(scan)
     logger.info("scan_created %s", redact_secrets({"scan_id": scan.id, "target": target}))
     return scan
+
+
+STALE_SCAN_MINUTES = 30
+
+
+def fail_stale_scans(db: Session, max_age_minutes: int = STALE_SCAN_MINUTES) -> int:
+    """Mark scans stuck in running/pending as failed after the cutoff.
+
+    Safety net for crashed agents or lost result submissions, so the
+    dashboard never shows an eternally-running scan. Called opportunistically
+    from read endpoints.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
+    stale = (
+        db.query(Scan)
+        .filter(Scan.status.in_(["running", "pending"]))
+        .filter(Scan.created_at < cutoff)
+        .all()
+    )
+    for scan in stale:
+        scan.status = "failed"
+        scan.error = "Scan abandoned: no result received (agent offline or submission lost)"
+        scan.completed_at = datetime.now(timezone.utc)
+        scan.progress = 100
+    if stale:
+        db.commit()
+    return len(stale)
 
 
 def claim_pending_scans(db: Session, agent: Agent, limit: int = 5) -> list[Scan]:

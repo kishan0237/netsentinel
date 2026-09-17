@@ -54,6 +54,7 @@ def list_scans(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
+    scan_service.fail_stale_scans(db)  # janitor: fail scans stuck >30 min
     scans = db.query(Scan)
     if status_filter:
         scans = scans.filter(Scan.status == status_filter)
