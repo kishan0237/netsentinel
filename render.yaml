@@ -5,13 +5,14 @@ services:
   - type: web
     name: netsentinel-api
     runtime: python
-    pythonVersion: "3.11.9"   # match local dev; avoids build failures on newer Pythons
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.backend.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"      # match local dev; 3.14 has no wheels for pinned pydantic-core
       - key: DATABASE_URL
         sync: false          # paste your Supabase Postgres URI (use the pooler URI on port 6543)
       - key: CORS_ORIGINS
