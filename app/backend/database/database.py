@@ -11,6 +11,12 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 # Treat empty-string env vars (e.g. Render env var left blank) as unset
 DATABASE_URL = os.getenv("DATABASE_URL") or "sqlite:///./netsentinel.db"
+
+# SQLAlchemy maps plain `postgresql://` to the psycopg2 driver, which we do
+# not ship (we use psycopg 3). Rewrite the scheme so the plain Supabase URI
+# copied from their dashboard works as-is.
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgresql://"):]
 AUTO_CREATE_TABLES = os.getenv("AUTO_CREATE_TABLES", "true").lower() != "false"
 
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
