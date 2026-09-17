@@ -17,7 +17,10 @@ from app.backend.routes import (
 )
 from app.backend.utils.secrets_management import generate_installation_id  # noqa: F401
 
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+log_level = (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
+if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+    log_level = "INFO"
+logging.basicConfig(level=log_level)
 logger = logging.getLogger("netsentinel")
 
 app = FastAPI(

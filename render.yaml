@@ -24,4 +24,4 @@ services:
       - key: AUTO_CREATE_TABLES
         value: "true"        # safe: create_all is idempotent; schema also in supabase/migrations
       - key: LOG_LEVEL
-        value: info
+        value: INFO
