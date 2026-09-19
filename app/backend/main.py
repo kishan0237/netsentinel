@@ -70,6 +70,15 @@ def root():
     return {"name": "NetSentinel API", "version": "1.0.0", "docs": "/docs"}
 
 
+@app.get("/api/version", tags=["meta"])
+def version():
+    """Deploy marker: which commit is actually running (Render injects it)."""
+    return {
+        "version": "1.0.0",
+        "git_commit": (os.getenv("RENDER_GIT_COMMIT") or "unknown")[:7],
+    }
+
+
 @app.get("/api/health", tags=["meta"])
 def health(db=Depends(get_db)):
     """Liveness + database connectivity check.

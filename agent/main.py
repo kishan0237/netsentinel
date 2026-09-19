@@ -10,6 +10,7 @@ import argparse
 import logging
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -43,6 +44,8 @@ class NetSentinelAgent:
         self.pipeline = ScanPipeline()
         self.heartbeat: HeartbeatThread | None = None
         self._stop = False
+        self._need_reauth = threading.Event()
+        self._register_lock = threading.Lock()
 
     def start(self) -> None:
         logger.info("NetSentinel Agent v%s", VERSION)
@@ -55,10 +58,7 @@ class NetSentinelAgent:
             logger.error("Registration failed — check API URL and network. Retrying on next loop.")
             return self._run_loop(register_first=True)
 
-        self.heartbeat = HeartbeatThread(
-            self.api_url, identity["agent_uuid"], self.identity.token, VERSION
-        )
-        self.heartbeat.start()
+        self._start_heartbeat()
         logger.info("Agent registered. Waiting for scan jobs...")
         self._run_loop()
 
@@ -79,6 +79,29 @@ class NetSentinelAgent:
         logger.warning("Registration failed: %s", data)
         return False
 
+    def _start_heartbeat(self) -> None:
+        if self.heartbeat and self.heartbeat.is_alive():
+            self.heartbeat.stop()
+            self.heartbeat.join(timeout=5)
+        self.heartbeat = HeartbeatThread(
+            self.api_url, self.identity.agent_uuid, self.identity.token, VERSION,
+            reauth_event=self._need_reauth,
+        )
+        self.heartbeat.start()
+
+    def _maybe_reauth(self) -> None:
+        """Re-register if the server invalidated our token (heartbeat 401)."""
+        if not self._need_reauth.is_set():
+            return
+        self._need_reauth.clear()
+        with self._register_lock:
+            logger.warning("Token rejected — re-registering...")
+            self.identity.token = ""
+            if self._register():
+                self._start_heartbeat()
+            else:
+                self._need_reauth.set()  # try again next poll
+
     def _run_loop(self, register_first: bool = False) -> None:
         backoff = 5
         while not self._stop:
@@ -87,12 +110,10 @@ class NetSentinelAgent:
                     register_first = False
                     time.sleep(POLL_INTERVAL)
                     if self._register():
-                        self.heartbeat = HeartbeatThread(
-                            self.api_url, self.identity.agent_uuid, self.identity.token, VERSION
-                        )
-                        self.heartbeat.start()
+                        self._start_heartbeat()
                     continue
 
+                self._maybe_reauth()
                 self._poll_once()
                 backoff = 5
             except KeyboardInterrupt:
@@ -115,27 +136,36 @@ class NetSentinelAgent:
             self.api_url, self.identity.agent_uuid, self.identity.token
         )
         if not claimed.get("ok"):
-            # Token likely invalidated (API restart) — re-register once
+            # Token likely invalidated (API restart) — re-register
             if claimed.get("status") in (401, 403):
-                self.identity.token = ""
-                if not self._register():
-                    time.sleep(POLL_INTERVAL)
+                self._need_reauth.set()
+                self._maybe_reauth()
             return
 
         for scan in claimed.get("data") or []:
             self._run_scan(scan)
 
     def _flush_offline_queue(self) -> None:
+        if not self.identity.token:
+            return
         for item in offline_queue.dequeue_all():
+            # Always flush with the CURRENT token: older queue items may carry
+            # tokens rotated away by re-registration.
             ok, _ = api_client.submit_results(
-                self.api_url, item["scan_id"], item["agent_uuid"], item["token"],
-                item["results"],
+                self.api_url, item["scan_id"], self.identity.agent_uuid,
+                self.identity.token, item["results"],
             )
             if ok:
                 offline_queue.ack(item["scan_id"])
                 logger.info("Flushed queued results for scan %s", item["scan_id"][:8])
+            elif item.get("token") != self.identity.token:
+                # Stale-token poison: rewriting the file keeps the queue
+                # flushable instead of failing forever on 401.
+                offline_queue.enqueue(item["scan_id"], self.identity.agent_uuid,
+                                      self.identity.token, item["results"])
+                logger.warning("Queued results had stale token — refreshed for next attempt")
             else:
-                break  # server still unreachable; try again next poll
+                break  # server unreachable/5xx; try again next poll
 
     def _run_scan(self, scan: dict) -> None:
         scan_id = scan["id"]

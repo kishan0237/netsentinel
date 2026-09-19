@@ -78,10 +78,13 @@ def register(api_url: str, agent_uuid: str, hostname: str, platform_name: str,
     )
 
 
-def heartbeat(api_url: str, agent_uuid: str, token: str, version: str) -> bool:
-    ok, _ = _post(f"{api_url}/api/agents/heartbeat",
-                  {"agent_version": version}, agent_uuid, token, retries=1)
-    return ok
+def heartbeat(api_url: str, agent_uuid: str, token: str, version: str) -> int:
+    """Send a heartbeat; return the HTTP status (0 on network error)."""
+    ok, data = _post(f"{api_url}/api/agents/heartbeat",
+                     {"agent_version": version}, agent_uuid, token, retries=1)
+    if ok:
+        return 200
+    return data if isinstance(data, int) else 0
 
 
 def claim_scans(api_url: str, agent_uuid: str, token: str) -> dict:
