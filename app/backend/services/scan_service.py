@@ -7,6 +7,7 @@ streaming progress -> the agent pushes results -> scan becomes `completed`.
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -269,10 +270,17 @@ def persist_results(
     return {**counts, "findings": findings_added}
 
 
+# PostgreSQL rejects NUL bytes in text values, and psycopg cannot encode
+# lone surrogates; most other C0 control bytes are equally useless noise from
+# binary protocol banners (MySQL handshakes, etc.). Scrub them once, at the
+# single boundary every persisted result string passes through.
+_DB_UNSAFE_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff]")
+
+
 def _clean(value: Any, max_len: Optional[int]) -> Optional[str]:
     if value is None:
         return None
-    s = str(value).strip()
+    s = _DB_UNSAFE_RE.sub("", str(value).strip())
     if not s:
         return None
     if max_len is not None:

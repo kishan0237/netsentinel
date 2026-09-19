@@ -40,7 +40,16 @@ def _read_some(sock) -> Optional[str]:
     try:
         data = sock.recv(MAX_BANNER)
         if data:
-            return data.decode("utf-8", errors="replace").strip()[:MAX_BANNER]
+            text = data.decode("utf-8", errors="replace")
+            # Binary protocols (MySQL handshakes etc.) send NUL/control bytes:
+            # PostgreSQL cannot store them, so strip before use.
+            text = text.translate(_BANNER_CLEANUP)
+            return text.strip()[:MAX_BANNER] or None
     except (socket.timeout, OSError):
         pass
     return None
+
+
+# Drop NUL, DEL and C0 control chars (keep tab/newline/carriage-return)
+_BANNER_CLEANUP = {c: None for c in range(32) if c not in (9, 10, 13)}
+_BANNER_CLEANUP[0x7F] = None

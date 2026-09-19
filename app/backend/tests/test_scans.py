@@ -180,6 +180,45 @@ def test_fail_scan(client, registered_agent, auth_headers):
     assert "nmap" in detail["error"]
 
 
+def test_results_with_binary_banner_sql_safe(client, registered_agent, auth_headers):
+    """Regression: real LAN devices answer with binary banners (e.g. a MySQL
+    handshake full of NUL bytes). PostgreSQL rejects NULs and psycopg rejects
+    lone surrogates, so submission used to 500. The server must sanitize and
+    still persist the useful part of the banner."""
+    poison = "J\x00\x00\x00\n8.0.46\x00\x14\x00\x00\x00N9e\tfx\x7f/\x00\x02\x15"
+    payload = {
+        "hosts": [{
+            "ip_address": "192.168.29.34", "status": "up",
+            "ports": [{
+                "port_number": 3306, "protocol": "tcp", "state": "open",
+                "services": [{
+                    "service_name": "mysql", "product": "MySQL", "version": "8.0.46",
+                    "banner": poison, "vulnerabilities": [],
+                }],
+            }],
+        }],
+        "findings": [],
+    }
+    scan = _create_scan(client, registered_agent["agent_id"],
+                        target="192.168.29.34", scan_type="quick").json()
+    client.post("/api/scans/claim", headers=auth_headers)
+    resp = client.post(f"/api/scans/{scan['id']}/results", json=payload, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+
+    stored = client.get(f"/api/scans/{scan['id']}/results").json()
+    assert stored["scan"]["status"] == "completed"
+
+    # Banner isn't exposed in the API schema; verify the stored (sanitized) value
+    from app.backend.database.database import SessionLocal
+    from app.backend.database.models import Service
+    with SessionLocal() as db:
+        banner = db.query(Service).filter(Service.service_name == "mysql").first().banner
+    assert banner, "sanitized banner should not be empty"
+    assert "8.0.46" in banner, "useful banner content must survive sanitization"
+    for ch in banner:
+        assert ord(ch) >= 32 or ch in "\t\n\r", f"DB-unsafe char persisted: {ch!r}"
+
+
 def test_list_scans(client, registered_agent):
     _create_scan(client, registered_agent["agent_id"])
     resp = client.get("/api/scans")
