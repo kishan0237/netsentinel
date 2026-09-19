@@ -29,3 +29,4 @@ __pycache__/
 # docs build artifacts
 docs/.edge-tmp/
 .bolt/ 
+.freebuff/ 
